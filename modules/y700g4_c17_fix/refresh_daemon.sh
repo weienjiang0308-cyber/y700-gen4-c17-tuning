@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# 刷新率守护 v4.3 —— ColorOS 的触摸空闲降帧 / 刷新率总调度 / OVFR 等已在 post-fs-data 关掉，这里全权控制
+# 刷新率守护 v4.4 —— ColorOS 的触摸空闲降帧 / 刷新率总调度 / OVFR 等已在 post-fs-data 关掉，这里全权控制
 #   手指/笔按下          -> 立刻 TOUCH_HZ（165），按着期间保持
 #   抬起后 IDLE_SEC 秒，按优先级：
 #     前台应用在 games.txt                 -> GAME_HZ（165）
@@ -52,14 +52,15 @@ if [ -z "$I_TOUCH" ] || [ -z "$I_IDLE" ] || [ -z "$I_VIDEO" ] || [ -z "$I_GAME" 
   log "错误：配置的刷新率不受支持（支持：$(echo $MODES | sed -E 's/[0-9]+://g')）"; exit 1
 fi
 
-# 0-fork 合并单次扫描触摸屏 + 手写笔 + 音量键（Y700 四代：音量减 = pmic_resin，音量加 = gpio-keys）
-DEVS=""; KDEVS=""
+# 0-fork 合并单次扫描触摸屏 + 手写笔 + 音量键 + 电源键（Y700 四代：音量减 = pmic_resin，音量加 = gpio-keys，电源键 = pmic_pwrkey）
+DEVS=""; KDEVS=""; PDEVS=""
 for e in /sys/class/input/event*; do
   [ -r "$e/device/name" ] || continue
   nm=""; read -r nm < "$e/device/name" 2>/dev/null
   case "$nm" in
     *[Tt]ouch[Ss]creen*|*Capacitive*) DEVS="$DEVS /dev/input/${e##*/}" ;;
     gpio-keys|pmic_resin) [ "$VOLKEY" = 1 ] && KDEVS="$KDEVS /dev/input/${e##*/}" ;;
+    *pwrkey*|*powerkey*)  PDEVS="$PDEVS /dev/input/${e##*/}" ;;
   esac
 done
 [ -z "$DEVS" ] && { log "错误：没找到触摸屏"; exit 1; }
@@ -80,22 +81,23 @@ echo $$ > "$MODDIR/daemon.pid"
 [ -n "$CPUSET" ] && [ -w "/dev/cpuset/$CPUSET/cgroup.procs" ] && echo $$ > "/dev/cpuset/$CPUSET/cgroup.procs" 2>/dev/null
 [ -n "$CPUSET" ] && [ -w "/dev/cpuctl/$CPUSET/cgroup.procs" ] && echo $$ > "/dev/cpuctl/$CPUSET/cgroup.procs" 2>/dev/null
 [ -n "$NICE" ] && renice -n "$NICE" -p $$ >/dev/null 2>&1
-log "启动 v4.3（cpuset=${CPUSET} nice=${NICE}）：触摸=${TOUCH_HZ} 静止${IDLE_SEC}s=${IDLE_HZ} 视频=${VIDEO_HZ} 画面在动(GPU≥${CONTENT_GPU}%)=${CONTENT_HZ} 游戏(名单${NG}个/GPU≥${GAME_GPU}%)=${GAME_HZ} 旋转=$([ "$ROTATE_DETECT" = 1 ] && echo "${ROTATE_HZ}×${ROTATE_SEC}s" || echo 关) 视频检测=${VFILE:-/proc/interrupts#$VIRQ} 前台检测=${TOPAPP:-无} 设备=$DEVS 音量键=${KDEVS:-无}"
-# 旋转提前探测：打开 WindowManager 方向日志，只订阅 system_server 的这一行。system_server 重启（软重启）后 pid 会变，所以外面套循环。
+log "启动 v4.4（cpuset=${CPUSET} nice=${NICE}）：触摸=${TOUCH_HZ} 静止${IDLE_SEC}s=${IDLE_HZ} 视频=${VIDEO_HZ} 画面在动(GPU≥${CONTENT_GPU}%)=${CONTENT_HZ} 游戏(名单${NG}个/GPU≥${GAME_GPU}%)=${GAME_HZ} 旋转=$([ "$ROTATE_DETECT" = 1 ] && echo "${ROTATE_HZ}×${ROTATE_SEC}s" || echo 关) 视频检测=${VFILE:-/proc/interrupts#$VIRQ} 前台检测=${TOPAPP:-无} 设备=$DEVS 音量键=${KDEVS:-无} 电源键=${PDEVS:-无}"
+# 旋转 + 亮屏唤醒提前探测：订阅 system 缓冲区里 system_server 的转屏行与 PowerManagerService 亮屏唤醒行（C++ 内部过滤，0 额外进程）。
 SDK=$(getprop ro.build.version.sdk)
 [ "${SDK:-0}" -ge 37 ] 2>/dev/null && cmd protolog_configuration logcat disable WM_DEBUG_ORIENTATION >/dev/null 2>&1
 rot_watch() {
   while true; do
     ss=$(pidof system_server)
     if [ -n "$ss" ]; then
-      # 安卓 17（C17）：自带 "Display id 0 rotation changed to"（I 级别，system 缓冲区，比旋转动画早），
-      #   实测和 ProtoLog 的 onProposedRotationChanged 只差 0~3ms，所以关闭 ProtoLog 并只订阅 WindowManager:I。
-      # 安卓 16（C16）没有这行，只能靠 ProtoLog：老命令 cmd window logging enable-text。
-      if [ "${SDK:-0}" -ge 37 ] 2>/dev/null; then
-        logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^Display id 0 rotation changed to' 'WindowManager:I' '*:S' 2>/dev/null
+      if [ "$ROTATE_DETECT" = 1 ]; then
+        if [ "${SDK:-0}" -ge 37 ] 2>/dev/null; then
+          logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^(Display id 0 rotation changed to|Waking up from)' 'WindowManager:I' 'PowerManagerService:I' '*:S' 2>/dev/null
+        else
+          cmd window logging enable-text WM_DEBUG_ORIENTATION >/dev/null 2>&1
+          logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^(onProposedRotationChanged|Waking up from)' 'WindowManager:V' 'PowerManagerService:I' '*:S' 2>/dev/null
+        fi
       else
-        cmd window logging enable-text WM_DEBUG_ORIENTATION >/dev/null 2>&1
-        logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^onProposedRotationChanged' 'WindowManager:V' '*:S' 2>/dev/null
+        logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^Waking up from' 'PowerManagerService:I' '*:S' 2>/dev/null
       fi
     fi
     sleep 5
@@ -142,11 +144,10 @@ fg_game() {              # 前台（top-app）里有没有名单中的游戏
 
 while true; do
   [ -f "$MODDIR/disable" ] && { release; log "模块已禁用，退出"; exit 0; }
-  # 只把「按下/抬起」（BTN_TOUCH = 0001 014a）和音量键交给 shell；滑动坐标由 grep 在底层丢掉
-  # 旋转信号按系统版本精简匹配正则，减少每行判定开销
-  [ "${SDK:-0}" -ge 37 ] 2>/dev/null && ROT_PAT='^Display id 0 rotation changed to' || ROT_PAT='^onProposedRotationChanged'
-  { for dv in $DEVS $KDEVS; do getevent -q "$dv" & done; [ "$ROTATE_DETECT" = 1 ] && rot_watch & wait; } 2>/dev/null \
-    | grep --line-buffered -e '^0001 014a ' -e '^0001 007[23] ' -e "$ROT_PAT" | {
+  # 只把「按下/抬起」（BTN_TOUCH = 0001 014a）、音量键（0072/0073）、电源键（0074）及转屏/亮屏唤醒信号交给 shell
+  [ "${SDK:-0}" -ge 37 ] 2>/dev/null && SYS_PAT='^(Display id 0 rotation changed to|Waking up from)' || SYS_PAT='^(onProposedRotationChanged|Waking up from)'
+  { for dv in $DEVS $KDEVS $PDEVS; do getevent -q "$dv" & done; rot_watch & wait; } 2>/dev/null \
+    | grep --line-buffered -e '^0001 014a ' -e '^0001 007[234] ' -e "$SYS_PAT" | {
     CUR=""; RA=0; NCHK=0; NI=0; dv=0
     force_again() {   # 应用申请高刷（DisplayModeDirector.setAppRequest）时系统会重新下发策略、盖掉强制，所以要补发。
                       # 应用申请高刷一定伴随界面更新，所以只在「这次复查期间 GPU 有负载或在解码视频」时补发，完全静止时不补发。
@@ -172,20 +173,39 @@ while true; do
     #   提前降到 120/30），所以醒来后先看有没有到截止时间，没到就接着等剩下的。
     now() { read NOW _ < /proc/uptime; NOW=${NOW%.*}; }
     hold() { now; UNTIL=$((NOW + $1)); T=$1; }     # hold <秒>：从现在起至少保持当前状态这么久
+    WAKE_AT=0
+    do_wake() {       # 亮屏唤醒（黑屏按电源键，或双击/抬手/皮套触发 Waking up）：抢在亮屏动画第 1 帧前切 165Hz，并卡点补发防系统重置
+      now
+      [ "$CUR" = wake ] && [ $((NOW - WAKE_AT)) -lt 1 ] && return
+      WAKE_AT=$NOW; TOUCHING=0; vidc_read; VPREV=$VC; HG=0
+      CUR=""; setm wake "$I_TOUCH"; hold "$IDLE_SEC"; T=1
+      ( sleep 0.12; service call SurfaceFlinger 1035 i32 "$I_TOUCH"
+        sleep 0.25; screen_on && service call SurfaceFlinger 1035 i32 "$I_TOUCH"
+        sleep 0.45; screen_on && service call SurfaceFlinger 1035 i32 "$I_TOUCH" ) >/dev/null 2>&1 &
+    }
     TOUCHING=0; hold "$IDLE_SEC"; vidc_read; VPREV=$VC; HG=0; BASE=0
     while true; do
       if [ "$TOUCHING" = 1 ]; then read -r _l; rc=$?
       else read -t "$T" -r _l; rc=$?; fi
       if [ "$rc" -eq 0 ]; then
         case "$_l" in
-          onProposed*|Display*)                                                       # 要旋转：动画开始前切高刷，保持 ROTATE_SEC 秒
+          Waking\ up*)                                                          # 系统亮屏唤醒（电源键/皮套/双击/抬手等全渠道兜底）
+            do_wake ;;
+          onProposed*|Display*)                                                 # 要旋转：动画开始前切高刷，保持 ROTATE_SEC 秒
             if [ "$TOUCHING" = 1 ]; then service call SurfaceFlinger 1035 i32 "$I_ROTATE" >/dev/null 2>&1   # 按着屏幕转：状态不变，只补发
             else CUR=""; setm rotate "$I_ROTATE"; hold "$ROTATE_SEC"; fi
             ( sleep 0.3; service call SurfaceFlinger 1035 i32 "$I_ROTATE"; sleep 0.6; service call SurfaceFlinger 1035 i32 "$I_ROTATE" ) >/dev/null 2>&1 & ;;
           *00000002) ;;                                                         # 按键长按的重复事件：不管
+          0001\ 0074\ 00000001)                                                 # 电源键按下：黑屏时抢跑唤醒 165Hz；亮屏时切 165Hz 让关屏动画也丝滑
+            if ! screen_on || [ "$CUR" = off ]; then do_wake
+            else TOUCHING=1; CUR=""; setm touch "$I_TOUCH"; fi ;;
+          0001\ 0074\ 00000000)                                                 # 电源键抬起：刚唤醒则保持 wake 计时，否则走普通抬起
+            TOUCHING=0; vidc_read; VPREV=$VC; HG=0
+            if [ "$CUR" = wake ]; then T=1
+            else hold "$IDLE_SEC"; T=1; fi ;;
           *00000001) TOUCHING=1; CUR=""; setm touch "$I_TOUCH" ;;               # 按下（手指/笔/音量键）：立刻 165，每次都重发（系统可能已经偷偷改过）
-          *)         TOUCHING=0; vidc_read; VPREV=$VC; HG=0                     # 抬起：重新计时；刚转过屏就取更晚的那个截止时间
-                     now; if [ "$CUR" = rotate ] && [ "$UNTIL" -gt $((NOW + IDLE_SEC)) ]; then T=$((UNTIL - NOW)); else hold "$IDLE_SEC"; fi
+          *)         TOUCHING=0; vidc_read; VPREV=$VC; HG=0                     # 抬起：重新计时；刚转过屏或刚唤醒就取更晚的那个截止时间
+                     now; if { [ "$CUR" = rotate ] || [ "$CUR" = wake ]; } && [ "$UNTIL" -gt $((NOW + IDLE_SEC)) ]; then T=$((UNTIL - NOW)); else hold "$IDLE_SEC"; fi
                      T=1 ;;                                                 # 等待期间每秒醒一次，补发高刷（见下）
         esac
         continue
@@ -193,10 +213,14 @@ while true; do
       [ "$rc" -eq 1 ] && break                                 # getevent 退出
       if [ "$UNTIL" -gt 0 ]; then                              # 被信号提前叫醒：没到截止时间就接着等
         now; if [ "$NOW" -lt "$UNTIL" ]; then
-          if ! screen_on; then UNTIL=0; release; CUR=off; [ "$DEBUG" = 1 ] && log "-> 熄屏，交还系统"; T=$OFF_SEC; continue; fi
-          # 抬手后 / 转屏后的保持期：应用申请刷新率时系统会重算策略、把强制的 165 盖成 60，
+          if ! screen_on; then
+            # 刚触发亮屏唤醒的前 2 秒屏幕面板正在通电点亮（brightness 尚未变非 0），不能误判成熄屏掐断高刷
+            if [ "$CUR" = wake ] && [ $((NOW - WAKE_AT)) -lt 2 ]; then T=1; continue; fi
+            UNTIL=0; release; CUR=off; [ "$DEBUG" = 1 ] && log "-> 熄屏，交还系统"; T=$OFF_SEC; continue
+          fi
+          # 抬手后 / 亮屏后 / 转屏后的保持期：应用申请刷新率时系统会重算策略、把强制的 165 盖成 60，
           # 所以保持期内每秒补发一次（只有这几秒，开销可忽略）
-          case "$CUR" in touch) service call SurfaceFlinger 1035 i32 "$I_TOUCH" >/dev/null 2>&1 ;; rotate) service call SurfaceFlinger 1035 i32 "$I_ROTATE" >/dev/null 2>&1 ;; esac
+          case "$CUR" in touch|wake) service call SurfaceFlinger 1035 i32 "$I_TOUCH" >/dev/null 2>&1 ;; rotate) service call SurfaceFlinger 1035 i32 "$I_ROTATE" >/dev/null 2>&1 ;; esac
           T=1; continue
         fi
         UNTIL=0

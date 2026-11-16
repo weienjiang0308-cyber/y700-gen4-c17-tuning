@@ -1,5 +1,5 @@
 SKIPUNZIP=0
-ui_print "- 拯救者 Y700 四代 · C17 终极修复补丁 v2.2"
+ui_print "- 拯救者 Y700 四代 · C17 终极修复补丁 v2.3"
 ui_print "  ① 刷新率  ② 桌面适配  ③ 音量条  ④ 新应用断网修复  ⑤ 网络优化  ⑥ 通用小核化"
 ui_print "- 零外部依赖（无需 meta-overlayfs / LSPosed），开关：config.conf（改完重启生效）"
 
