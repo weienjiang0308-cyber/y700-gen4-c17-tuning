@@ -1,0 +1,6 @@
+id=sys_apps_autostart
+name=应用系统化 + 开机自启（Scene / WireGuard）
+version=v1.1
+versionCode=2
+author=weienjiang0308-cyber
+description=把 config.conf 里列出的应用（默认 Scene、WireGuard）以 systemless 方式挂成系统应用（/system/app），加入 ColorOS 自启动白名单；开机解锁并连上网络后自动连接 WireGuard 隧道。安装时复制当前版本的安装包；应用更新后照常使用。禁用或卸载后重启即恢复。
