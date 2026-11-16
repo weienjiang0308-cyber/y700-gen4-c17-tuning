@@ -47,7 +47,7 @@ ban_scene_vrr() {
 ban_scene_vrr
 if [ "$VRR" = 1 ] && [ ! -f "$MODDIR/.no_override" ]; then
   [ -f "$MODDIR/daemon.pid" ] && kill -TERM -"$(cat "$MODDIR/daemon.pid")" 2>/dev/null
-  setsid sh "$MODDIR/refresh_daemon.sh" >/dev/null 2>&1 &
+  setsid /system/bin/sh "$MODDIR/refresh_daemon.sh" >/dev/null 2>&1 &
 fi
 
 # ---------- 音量条（尽早做，赶在第一次按音量键之前）----------

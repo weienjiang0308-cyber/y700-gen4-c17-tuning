@@ -1,4 +1,6 @@
 #!/system/bin/sh
+# 必须由安卓原生 mksh 运行（busybox ash 的 read -t 超时返回 1 会被误判为管道 EOF 导致消费者退出卡在 165Hz）
+[ -z "$KSH_VERSION" ] && [ -x /system/bin/sh ] && exec /system/bin/sh "$0" "$@"
 # 刷新率守护 v4.4 —— ColorOS 的触摸空闲降帧 / 刷新率总调度 / OVFR 等已在 post-fs-data 关掉，这里全权控制
 #   手指/笔按下          -> 立刻 TOUCH_HZ（165），按着期间保持
 #   抬起后 IDLE_SEC 秒，按优先级：
