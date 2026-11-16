@@ -265,7 +265,7 @@ if [ "$LITTLECORE" = 1 ]; then
           tcs=""; read -r tcs < "$td/cpuset" 2>/dev/null
           tal=""
           while IFS=: read -r k v; do
-            case "$k" in Cpus_allowed_list) tal=$(echo $v); break ;; esac
+            case "$k" in Cpus_allowed_list) tal=${v#"${v%%[! 	]*}"}; break ;; esac
           done < "$td/status" 2>/dev/null
           if [ "$tcs" != "/background" ] || [ "$tal" != "$BG_CPUS" ]; then
             echo "$tid" > "$CT" 2>/dev/null
