@@ -147,9 +147,10 @@ fg_game() {              # 前台（top-app）里有没有名单中的游戏
 while true; do
   [ -f "$MODDIR/disable" ] && { release; log "模块已禁用，退出"; exit 0; }
   # 只把「按下/抬起」（BTN_TOUCH = 0001 014a）、音量键（0072/0073）、电源键（0074）及转屏/亮灭屏信号交给 shell
+  # 注意：toybox grep 必须加 -E 才能解析 (A|B|C) 分支正则，否则括号和竖线会被当字面量导致信号全丢！
   [ "${SDK:-0}" -ge 37 ] 2>/dev/null && SYS_PAT='^(Display id 0 rotation changed to|Waking up from|Going to sleep)' || SYS_PAT='^(onProposedRotationChanged|Waking up from|Going to sleep)'
   { for dv in $DEVS $KDEVS $PDEVS; do getevent -q "$dv" & done; rot_watch & wait; } 2>/dev/null \
-    | grep --line-buffered -e '^0001 014a ' -e '^0001 007[234] ' -e "$SYS_PAT" | {
+    | grep --line-buffered -E -e '^0001 014a ' -e '^0001 007[234] ' -e "$SYS_PAT" | {
     CUR=""; RA=0; NCHK=0; NI=0; dv=0
     force_again() {   # 应用申请高刷（DisplayModeDirector.setAppRequest）时系统会重新下发策略、盖掉强制，所以要补发。
                       # 应用申请高刷一定伴随界面更新，所以只在「这次复查期间 GPU 有负载或在解码视频」时补发，完全静止时不补发。
@@ -176,14 +177,14 @@ while true; do
     now() { read NOW _ < /proc/uptime; NOW=${NOW%.*}; }
     hold() { now; UNTIL=$((NOW + $1)); T=$1; }     # hold <秒>：从现在起至少保持当前状态这么久
     WAKE_AT=0
-    do_wake() {       # 亮屏唤醒（黑屏按电源键，或双击/抬手/皮套触发 Waking up）：抢在亮屏动画第 1 帧前切 165Hz，并卡点补发防系统重置
+    do_wake() {       # 亮屏唤醒（黑屏按电源键，或双击/抬手/皮套触发 Waking up）：抢在亮屏动画前切 165Hz，并在面板上电完成点（~228ms）前后连续补发
       now
       [ "$CUR" = wake ] && [ $((NOW - WAKE_AT)) -lt 1 ] && return
       WAKE_AT=$NOW; TOUCHING=0; vidc_read; VPREV=$VC; HG=0
       CUR=""; setm wake "$I_TOUCH"; hold "$IDLE_SEC"; T=1
-      ( sleep 0.12; service call SurfaceFlinger 1035 i32 "$I_TOUCH"
-        sleep 0.25; screen_on && service call SurfaceFlinger 1035 i32 "$I_TOUCH"
-        sleep 0.45; screen_on && service call SurfaceFlinger 1035 i32 "$I_TOUCH" ) >/dev/null 2>&1 &
+      ( sleep 0.15; service call SurfaceFlinger 1035 i32 "$I_TOUCH"
+        sleep 0.15; service call SurfaceFlinger 1035 i32 "$I_TOUCH"
+        sleep 0.30; screen_on && service call SurfaceFlinger 1035 i32 "$I_TOUCH" ) >/dev/null 2>&1 &
     }
     TOUCHING=0; hold "$IDLE_SEC"; vidc_read; VPREV=$VC; HG=0; BASE=0
     while true; do
