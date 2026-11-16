@@ -1,8 +1,9 @@
 SKIPUNZIP=0
-ui_print "- 无线调试安全自启 v1.2（Wi-Fi 白名单 + 出门自动关闭版）"
+ui_print "- 无线调试安全自启 v1.3（事件驱动零开销 + Wi-Fi 白名单版）"
 OLD=/data/adb/modules/adb_wifi_auto
 if [ -f "$OLD/config.conf" ] && ! grep -qE '^HOME_SSIDS="(\*|YOUR_HOME_WIFI)' "$OLD/config.conf"; then
   cp -f "$OLD/config.conf" "$MODPATH/config.conf"
+  sed -i 's/^INTERVAL=20$/INTERVAL=180/' "$MODPATH/config.conf"
   ui_print "- 已保留原来的自定义 Wi-Fi 名单 config.conf"
 else
   ui_print "! 提示：请在安装后编辑 /data/adb/modules/adb_wifi_auto/config.conf"

@@ -1,6 +1,6 @@
 id=adb_wifi_auto
-name=无线调试安全自启（指定 Wi-Fi 白名单）
-version=v1.2
-versionCode=3
+name=无线调试安全自启（指定 Wi-Fi 白名单 · 零开销事件驱动）
+version=v1.3
+versionCode=4
 author=weienjiang0308-cyber
-description=只在连接 config.conf 指定的自家 Wi-Fi（支持全屋漫游多分支）时自动打开「无线调试」；一旦连上名单外的外部 Wi-Fi 或离家断网，自动强制关闭无线调试保安全。使用前请先在 config.conf 填写自家 Wi-Fi 名称。
+description=事件驱动零常驻开销：只在连接 config.conf 指定的自家 Wi-Fi（支持全屋漫游多分支）时自动打开「无线调试」；一旦连上名单外的外部 Wi-Fi 或离家断网，秒级强制关闭无线调试保安全。使用前请先在 config.conf 填写自家 Wi-Fi 名称。

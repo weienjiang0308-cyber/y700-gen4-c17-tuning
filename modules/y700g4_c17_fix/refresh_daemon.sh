@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # 必须由安卓原生 mksh 运行（busybox ash 的 read -t 超时返回 1 会被误判为管道 EOF 导致消费者退出卡在 165Hz）
 [ -z "$KSH_VERSION" ] && [ -x /system/bin/sh ] && exec /system/bin/sh "$0" "$@"
-# 刷新率守护 v4.4 —— ColorOS 的触摸空闲降帧 / 刷新率总调度 / OVFR 等已在 post-fs-data 关掉，这里全权控制
+# 刷新率守护 v4.5 —— ColorOS 的触摸空闲降帧 / 刷新率总调度 / OVFR 等已在 post-fs-data 关掉，这里全权控制
 #   手指/笔按下          -> 立刻 TOUCH_HZ（165），按着期间保持
 #   抬起后 IDLE_SEC 秒，按优先级：
 #     前台应用在 games.txt                 -> GAME_HZ（165）
@@ -83,8 +83,8 @@ echo $$ > "$MODDIR/daemon.pid"
 [ -n "$CPUSET" ] && [ -w "/dev/cpuset/$CPUSET/cgroup.procs" ] && echo $$ > "/dev/cpuset/$CPUSET/cgroup.procs" 2>/dev/null
 [ -n "$CPUSET" ] && [ -w "/dev/cpuctl/$CPUSET/cgroup.procs" ] && echo $$ > "/dev/cpuctl/$CPUSET/cgroup.procs" 2>/dev/null
 [ -n "$NICE" ] && renice -n "$NICE" -p $$ >/dev/null 2>&1
-log "启动 v4.4（cpuset=${CPUSET} nice=${NICE}）：触摸=${TOUCH_HZ} 静止${IDLE_SEC}s=${IDLE_HZ} 视频=${VIDEO_HZ} 画面在动(GPU≥${CONTENT_GPU}%)=${CONTENT_HZ} 游戏(名单${NG}个/GPU≥${GAME_GPU}%)=${GAME_HZ} 旋转=$([ "$ROTATE_DETECT" = 1 ] && echo "${ROTATE_HZ}×${ROTATE_SEC}s" || echo 关) 视频检测=${VFILE:-/proc/interrupts#$VIRQ} 前台检测=${TOPAPP:-无} 设备=$DEVS 音量键=${KDEVS:-无} 电源键=${PDEVS:-无}"
-# 旋转 + 亮屏唤醒提前探测：订阅 system 缓冲区里 system_server 的转屏行与 PowerManagerService 亮屏唤醒行（C++ 内部过滤，0 额外进程）。
+log "启动 v4.5（cpuset=${CPUSET} nice=${NICE}）：触摸=${TOUCH_HZ} 静止${IDLE_SEC}s=${IDLE_HZ} 视频=${VIDEO_HZ} 画面在动(GPU≥${CONTENT_GPU}%)=${CONTENT_HZ} 游戏(名单${NG}个/GPU≥${GAME_GPU}%)=${GAME_HZ} 旋转=$([ "$ROTATE_DETECT" = 1 ] && echo "${ROTATE_HZ}×${ROTATE_SEC}s" || echo 关) 视频检测=${VFILE:-/proc/interrupts#$VIRQ} 前台检测=${TOPAPP:-无} 设备=$DEVS 音量键=${KDEVS:-无} 电源键=${PDEVS:-无}"
+# 旋转 + 亮屏唤醒 + 息屏过渡提前探测：复用同一个 logcat 连接订阅 system_server 的转屏与 PowerManagerService 亮灭屏单行信号（C++ 内部过滤，平时 0 唤醒、0 额外进程）。
 SDK=$(getprop ro.build.version.sdk)
 [ "${SDK:-0}" -ge 37 ] 2>/dev/null && cmd protolog_configuration logcat disable WM_DEBUG_ORIENTATION >/dev/null 2>&1
 rot_watch() {
@@ -93,13 +93,13 @@ rot_watch() {
     if [ -n "$ss" ]; then
       if [ "$ROTATE_DETECT" = 1 ]; then
         if [ "${SDK:-0}" -ge 37 ] 2>/dev/null; then
-          logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^(Display id 0 rotation changed to|Waking up from)' 'WindowManager:I' 'PowerManagerService:I' '*:S' 2>/dev/null
+          logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^(Display id 0 rotation changed to|Waking up from|Going to sleep)' 'WindowManager:I' 'PowerManagerService:I' '*:S' 2>/dev/null
         else
           cmd window logging enable-text WM_DEBUG_ORIENTATION >/dev/null 2>&1
-          logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^(onProposedRotationChanged|Waking up from)' 'WindowManager:V' 'PowerManagerService:I' '*:S' 2>/dev/null
+          logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^(onProposedRotationChanged|Waking up from|Going to sleep)' 'WindowManager:V' 'PowerManagerService:I' '*:S' 2>/dev/null
         fi
       else
-        logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^Waking up from' 'PowerManagerService:I' '*:S' 2>/dev/null
+        logcat -b system -v raw -T "$(date +%s).0" --pid="$ss" -e '^(Waking up from|Going to sleep)' 'PowerManagerService:I' '*:S' 2>/dev/null
       fi
     fi
     sleep 5
@@ -146,8 +146,8 @@ fg_game() {              # 前台（top-app）里有没有名单中的游戏
 
 while true; do
   [ -f "$MODDIR/disable" ] && { release; log "模块已禁用，退出"; exit 0; }
-  # 只把「按下/抬起」（BTN_TOUCH = 0001 014a）、音量键（0072/0073）、电源键（0074）及转屏/亮屏唤醒信号交给 shell
-  [ "${SDK:-0}" -ge 37 ] 2>/dev/null && SYS_PAT='^(Display id 0 rotation changed to|Waking up from)' || SYS_PAT='^(onProposedRotationChanged|Waking up from)'
+  # 只把「按下/抬起」（BTN_TOUCH = 0001 014a）、音量键（0072/0073）、电源键（0074）及转屏/亮灭屏信号交给 shell
+  [ "${SDK:-0}" -ge 37 ] 2>/dev/null && SYS_PAT='^(Display id 0 rotation changed to|Waking up from|Going to sleep)' || SYS_PAT='^(onProposedRotationChanged|Waking up from|Going to sleep)'
   { for dv in $DEVS $KDEVS $PDEVS; do getevent -q "$dv" & done; rot_watch & wait; } 2>/dev/null \
     | grep --line-buffered -e '^0001 014a ' -e '^0001 007[234] ' -e "$SYS_PAT" | {
     CUR=""; RA=0; NCHK=0; NI=0; dv=0
@@ -191,8 +191,14 @@ while true; do
       else read -t "$T" -r _l; rc=$?; fi
       if [ "$rc" -eq 0 ]; then
         case "$_l" in
-          Waking\ up*)                                                          # 系统亮屏唤醒（电源键/皮套/双击/抬手等全渠道兜底）
+          Waking\ up*)                                                          # 系统亮屏唤醒（电源键/抬手亮屏/双击亮屏/皮套开盖等全渠道）
             do_wake ;;
+          Going\ to\ sleep*)                                                    # 系统开始息屏（放下息屏/超时息屏/双击息屏/电源键息屏）：只发 1 次 165Hz 播完收拢动画，1 秒后背光灭即休眠
+            TOUCHING=0
+            if [ "$CUR" != touch ] && [ "$CUR" != wake ] && [ "$CUR" != rotate ]; then
+              service call SurfaceFlinger 1035 i32 "$I_TOUCH" >/dev/null 2>&1
+            fi
+            CUR=sleep_anim; hold 1; T=1 ;;
           onProposed*|Display*)                                                 # 要旋转：动画开始前切高刷，保持 ROTATE_SEC 秒
             if [ "$TOUCHING" = 1 ]; then service call SurfaceFlinger 1035 i32 "$I_ROTATE" >/dev/null 2>&1   # 按着屏幕转：状态不变，只补发
             else CUR=""; setm rotate "$I_ROTATE"; hold "$ROTATE_SEC"; fi

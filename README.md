@@ -12,8 +12,8 @@
 
 | 模块 | 安装包 | 作用 |
 |---|---|---|
-| **[`y700g4_c17_fix`](modules/y700g4_c17_fix)**<br>C17 终极修复补丁 **v2.3**（主推） | [`拯救者Y700四代-C17终极修复补丁-v2.3.zip`](dist/拯救者Y700四代-C17终极修复补丁-v2.3.zip) | **六合一核心补丁**：根治移植包刷新率乱跳 60Hz 与亮屏瞬间掉帧、8×6 桌面横竖屏压字错位、屏幕密度重置、音量条跑反边、安卓 17 新应用全断网、后台模块偷跑大核发热耗电 |
-| **[`adb_wifi_auto`](modules/adb_wifi_auto)**<br>无线调试安全自启 **v1.2** | [`adb_wifi_auto-v1.2.zip`](dist/adb_wifi_auto-v1.2.zip) | 连上指定的自家 Wi-Fi（支持全屋漫游多 SSID）时自动开启无线调试；**一旦连上外部公共 Wi-Fi 或离家断网，立即强制关闭无线调试保安全** |
+| **[`y700g4_c17_fix`](modules/y700g4_c17_fix)**<br>C17 终极修复补丁 **v2.4**（主推） | [`拯救者Y700四代-C17终极修复补丁-v2.4.zip`](dist/拯救者Y700四代-C17终极修复补丁-v2.4.zip) | **六合一核心补丁**：根治移植包刷新率乱跳 60Hz 与各种亮灭屏瞬间掉帧、8×6 桌面横竖屏压字错位、屏幕密度重置、音量条跑反边、安卓 17 新应用全断网、后台模块偷跑大核发热耗电 |
+| **[`adb_wifi_auto`](modules/adb_wifi_auto)**<br>无线调试安全自启 **v1.3** | [`adb_wifi_auto-v1.3.zip`](dist/adb_wifi_auto-v1.3.zip) | **事件驱动零开销**：连上指定的自家 Wi-Fi（支持全屋漫游多 SSID）时自动开启无线调试；**一旦连上外部公共 Wi-Fi 或离家断网，秒级强制关闭无线调试保安全** |
 | **[`sys_apps_autostart`](modules/sys_apps_autostart)**<br>应用系统化 + 自启 **v1.1** | [`sys_apps_autostart-v1.1.zip`](dist/sys_apps_autostart-v1.1.zip) | 将指定应用（默认 Scene、WireGuard）无损挂为 `/system/app` 系统应用、写入 ColorOS 自启白名单，支持开机解锁联网后自动连接 WireGuard 隧道 |
 
 ---

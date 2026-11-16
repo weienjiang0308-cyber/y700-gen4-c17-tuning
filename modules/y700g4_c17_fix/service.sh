@@ -225,20 +225,21 @@ if [ "$LITTLECORE" = 1 ]; then
     [ -w "$CS" ] || exit 0
     MYPID=$(sh -c 'echo $PPID')
     renice -n 19 -p "$MYPID" >/dev/null 2>&1
-    BG_CPUS="0-3"
-    [ -r /dev/cpuset/background/cpus ] && read -r BG_CPUS < /dev/cpuset/background/cpus 2>/dev/null
-    [ -z "$BG_CPUS" ] && BG_CPUS="0-3"
-    MASK_DEC=0; OLD_IFS=$IFS; IFS=,
-    for seg in $BG_CPUS; do
-      case "$seg" in
-        *-*) a=${seg%-*}; b=${seg#*-}; c=$a; while [ "$c" -le "$b" ]; do MASK_DEC=$((MASK_DEC | (1 << c))); c=$((c + 1)); done ;;
-        [0-9]*) MASK_DEC=$((MASK_DEC | (1 << seg))) ;;
-      esac
-    done
-    IFS=$OLD_IFS
-    [ "$MASK_DEC" -le 0 ] && MASK_DEC=15
-    BG_MASK=$(printf '%x' "$MASK_DEC")
     lc_scan() {
+      # 每次扫描动态重读当前 /dev/cpuset/background/cpus（例如开机后 uperf 会将后台核从 0-5 收紧为 0-2），确保始终锁在最窄的小核范围
+      BG_CPUS="0-3"
+      [ -r /dev/cpuset/background/cpus ] && read -r BG_CPUS < /dev/cpuset/background/cpus 2>/dev/null
+      [ -z "$BG_CPUS" ] && BG_CPUS="0-3"
+      MASK_DEC=0; OLD_IFS=$IFS; IFS=,
+      for seg in $BG_CPUS; do
+        case "$seg" in
+          *-*) a=${seg%-*}; b=${seg#*-}; c=$a; while [ "$c" -le "$b" ]; do MASK_DEC=$((MASK_DEC | (1 << c))); c=$((c + 1)); done ;;
+          [0-9]*) MASK_DEC=$((MASK_DEC | (1 << seg))) ;;
+        esac
+      done
+      IFS=$OLD_IFS
+      [ "$MASK_DEC" -le 0 ] && MASK_DEC=15
+      BG_MASK=$(printf '%x' "$MASK_DEC")
       ROOTS=""
       for f in $(grep -l '/data/adb/' /proc/[0-9]*/cmdline 2>/dev/null); do
         p=${f#/proc/}; p=${p%/cmdline}
